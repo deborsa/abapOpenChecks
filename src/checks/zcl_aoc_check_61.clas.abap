@@ -184,14 +184,14 @@ CLASS ZCL_AOC_CHECK_61 IMPLEMENTATION.
       SELECT elem_key AS intf_name FROM ifobjshort
         APPENDING CORRESPONDING FIELDS OF TABLE lt_pinf
         WHERE intf_name = ls_permission-intf_name
-        AND elem_type = 'PINF'.
+        AND elem_type = 'PINF'.                           "#EC CI_SUBRC
 
       SELECT elem_type AS obj_type
         elem_key AS obj_name
         FROM ifobjshort
         APPENDING TABLE rt_allowed
         WHERE intf_name = ls_permission-intf_name
-        AND elem_type <> 'PINF'.
+        AND elem_type <> 'PINF'.                          "#EC CI_SUBRC
     ENDLOOP.
 
     IF lines( lt_pinf ) > 0.
@@ -210,7 +210,7 @@ CLASS ZCL_AOC_CHECK_61 IMPLEMENTATION.
     SELECT SINGLE devclass INTO lv_package
       FROM tadir
       WHERE object = object_type
-      AND obj_name = object_name.
+      AND obj_name = object_name.                       "#EC CI_GENBUFF
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
@@ -310,7 +310,7 @@ CLASS ZCL_AOC_CHECK_61 IMPLEMENTATION.
   METHOD list_permissions.
 
     SELECT * FROM permission INTO TABLE rt_list
-      WHERE client_pak = iv_package.
+      WHERE client_pak = iv_package.                      "#EC CI_SUBRC
 
   ENDMETHOD.
 

@@ -18,7 +18,7 @@ START-OF-SELECTION.
   PERFORM run.
   PERFORM output.
 
-CLASS lcl_logic DEFINITION.
+CLASS lcl_logic DEFINITION FINAL.
   PUBLIC SECTION.
     CLASS-METHODS:
       in_open_transport IMPORTING is_tadir       TYPE tadir
@@ -35,12 +35,12 @@ CLASS lcl_logic IMPLEMENTATION.
     SELECT * FROM e071 INTO TABLE lt_e071
       WHERE pgmid = is_tadir-pgmid
       AND object = is_tadir-object
-      AND obj_name = is_tadir-obj_name.
+      AND obj_name = is_tadir-obj_name.                   "#EC CI_SUBRC
     IF lines( lt_e071 ) > 0.
       SELECT * FROM e070 INTO TABLE lt_e070
         FOR ALL ENTRIES IN lt_e071
         WHERE trkorr = lt_e071-trkorr
-        AND trstatus = 'D'.
+        AND trstatus = 'D'.                               "#EC CI_SUBRC
     ENDIF.
 
     IF lines( lt_e070 ) > 0.
@@ -60,7 +60,8 @@ FORM run.
   FIELD-SYMBOLS: <ls_tadir> LIKE LINE OF lt_tadir.
 
 
-  SELECT * FROM tadir INTO TABLE lt_tadir WHERE devclass IN s_devc.
+  SELECT * FROM tadir INTO TABLE lt_tadir
+    WHERE devclass IN s_devc.             "#EC CI_GENBUFF "#EC CI_SUBRC
 
   LOOP AT lt_tadir ASSIGNING <ls_tadir>.
     IF sy-tabix MOD 500 = 0.
@@ -68,11 +69,11 @@ FORM run.
         i_text               = 'Processing'
         i_processed          = sy-tabix
         i_total              = lines( lt_tadir )
-        i_output_immediately = abap_true ).
+        i_output_immediately = abap_true ) ##NO_TEXT.
     ENDIF.
 
     SELECT SINGLE devclass FROM tdevc INTO lv_devclass
-      WHERE devclass = <ls_tadir>-devclass.
+      WHERE devclass = <ls_tadir>-devclass.             "#EC CI_GENBUFF
     IF sy-subrc <> 0
         AND p_pack = abap_true
         AND NOT ( <ls_tadir>-object = 'DEVC'
@@ -88,7 +89,7 @@ FORM run.
         AND lcl_logic=>in_open_transport( <ls_tadir> ) = abap_false.
       ls_output-object   = <ls_tadir>-object.
       ls_output-obj_name = <ls_tadir>-obj_name.
-      ls_output-text     = 'deletion flag, but not in open tr'.
+      ls_output-text     = 'deletion flag, but not in open tr' ##NO_TEXT.
       APPEND ls_output TO gt_output.
     ENDIF.
 

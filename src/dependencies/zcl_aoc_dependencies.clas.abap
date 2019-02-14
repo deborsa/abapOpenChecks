@@ -71,6 +71,21 @@ CLASS zcl_aoc_dependencies DEFINITION
         !iv_name       TYPE tadir-obj_name
       RETURNING
         VALUE(rt_used) TYPE ty_objects_tt .
+    CLASS-METHODS resolve_prog_via_cross
+      IMPORTING
+        !iv_name       TYPE tadir-obj_name
+      RETURNING
+        VALUE(rt_used) TYPE ty_objects_tt .
+    CLASS-METHODS resolve_prog_via_wbcrossgt
+      IMPORTING
+        !iv_name       TYPE tadir-obj_name
+      RETURNING
+        VALUE(rt_used) TYPE ty_objects_tt .
+    CLASS-METHODS resolve_prog_via_wbcrossi
+      IMPORTING
+        !iv_name       TYPE tadir-obj_name
+      RETURNING
+        VALUE(rt_used) TYPE ty_objects_tt .
     CLASS-METHODS resolve_tabl
       IMPORTING
         !iv_name       TYPE tadir-obj_name
@@ -115,7 +130,8 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
         WHERE pgmid = 'R3TR'
         AND object = ct_used-obj_type
         AND obj_name = ct_used-obj_name
-        AND ( devclass LIKE 'Y%' OR devclass LIKE 'Z%' ).
+        AND ( devclass LIKE 'Y%'
+        OR devclass LIKE 'Z%' ).                          "#EC CI_SUBRC
     ENDIF.
 
   ENDMETHOD.
@@ -157,19 +173,19 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
     DATA: lv_clstype TYPE seoclass-clstype.
 
 
-    SELECT SINGLE COUNT(*) FROM dd04l WHERE rollname = iv_name.
+    SELECT COUNT(*) FROM dd04l WHERE rollname = iv_name.
     IF sy-subrc = 0.
       rv_type = 'DTEL'.
       RETURN.
     ENDIF.
 
-    SELECT SINGLE COUNT(*) FROM dd02l WHERE tabname = iv_name.
+    SELECT COUNT(*) FROM dd02l WHERE tabname = iv_name.
     IF sy-subrc = 0.
       rv_type = 'TABL'.
       RETURN.
     ENDIF.
 
-    SELECT SINGLE COUNT(*) FROM dd40l WHERE typename = iv_name.
+    SELECT COUNT(*) FROM dd40l WHERE typename = iv_name.
     IF sy-subrc = 0.
       rv_type = 'TTYP'.
       RETURN.
@@ -231,9 +247,15 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
 
   METHOD resolve_clas.
 
+    DATA: lt_includes TYPE seoincl_t,
+          lv_name     TYPE seoclsname.
+
+    FIELD-SYMBOLS: <lv_include> LIKE LINE OF lt_includes.
+
 * todo, this method does not exist on 702
-    DATA(lt_includes) = cl_oo_classname_service=>get_all_class_includes( CONV #( iv_name ) ).
-    LOOP AT lt_includes ASSIGNING FIELD-SYMBOL(<lv_include>).
+    lv_name = iv_name.
+    lt_includes = cl_oo_classname_service=>get_all_class_includes( lv_name ).
+    LOOP AT lt_includes ASSIGNING <lv_include>.
       APPEND LINES OF resolve_prog( <lv_include> ) TO rt_used.
     ENDLOOP.
 
@@ -256,7 +278,9 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
 
 
     SELECT SINGLE entitytab FROM dd01l INTO lv_entitytab
-      WHERE domname = iv_name AND as4local = 'A' AND as4vers = '0000'.
+      WHERE domname = iv_name
+      AND as4local = 'A'
+      AND as4vers = '0000'.                               "#EC CI_SUBRC
     IF NOT lv_entitytab IS INITIAL.
       ls_used-obj_type = find_type( lv_entitytab ).
       ls_used-obj_name = lv_entitytab.
@@ -300,7 +324,7 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
       EXCEPTIONS
         not_existent = 1
         no_program   = 2
-        OTHERS       = 3.
+        OTHERS       = 3. "#EC CI_SUBRC
 
     LOOP AT lt_includes INTO lv_include.
       APPEND LINES OF resolve_prog( lv_include ) TO rt_used.
@@ -318,33 +342,26 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
 
   METHOD resolve_prog.
 
-    DATA: lv_type      TYPE tadir-object,
-          lv_foo       TYPE string,
-          lt_cross     TYPE STANDARD TABLE OF cross WITH DEFAULT KEY,
-          ls_used      LIKE LINE OF rt_used,
-          lt_wbcrossgt TYPE STANDARD TABLE OF wbcrossgt WITH DEFAULT KEY,
-          lt_wbcrossi  TYPE STANDARD TABLE OF wbcrossi WITH DEFAULT KEY.
+    APPEND LINES OF resolve_prog_via_wbcrossi( iv_name ) TO rt_used.
+    APPEND LINES OF resolve_prog_via_cross( iv_name ) TO rt_used.
+    APPEND LINES OF resolve_prog_via_wbcrossgt( iv_name ) TO rt_used.
+
+  ENDMETHOD.
 
 
-    SELECT * FROM wbcrossi INTO TABLE lt_wbcrossi
-      WHERE include = iv_name.                            "#EC CI_SUBRC
-    LOOP AT lt_wbcrossi ASSIGNING FIELD-SYMBOL(<ls_wbcrossi>).
-      CASE <ls_wbcrossi>-otype.
-        WHEN 'IC'.
-          lv_type = 'PROG'.
-        WHEN OTHERS.
-* todo
-          CONTINUE.
-      ENDCASE.
-      ls_used-obj_type = lv_type.
-      ls_used-obj_name = <ls_wbcrossi>-name.
-      APPEND ls_used TO rt_used.
-    ENDLOOP.
+  METHOD resolve_prog_via_cross.
+
+    DATA: lv_type  TYPE tadir-object,
+          lt_cross TYPE STANDARD TABLE OF cross WITH DEFAULT KEY,
+          ls_used  LIKE LINE OF rt_used.
+
+    FIELD-SYMBOLS: <ls_cross> LIKE LINE OF lt_cross.
+
 
     SELECT * FROM cross INTO TABLE lt_cross
       WHERE include = iv_name
       AND name <> '?'.                                    "#EC CI_SUBRC
-    LOOP AT lt_cross ASSIGNING FIELD-SYMBOL(<ls_cross>).
+    LOOP AT lt_cross ASSIGNING <ls_cross>.
       CASE <ls_cross>-type.
         WHEN 'F'.
           lv_type = 'FUGR'.
@@ -379,10 +396,23 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
       APPEND ls_used TO rt_used.
     ENDLOOP.
 
+  ENDMETHOD.
+
+
+  METHOD resolve_prog_via_wbcrossgt.
+
+    DATA: lv_type      TYPE tadir-object,
+          lv_foo       TYPE string ##NEEDED,
+          ls_used      LIKE LINE OF rt_used,
+          lt_wbcrossgt TYPE STANDARD TABLE OF wbcrossgt WITH DEFAULT KEY.
+
+    FIELD-SYMBOLS: <ls_wbcrossgt> LIKE LINE OF lt_wbcrossgt.
+
+
     SELECT * FROM wbcrossgt INTO TABLE lt_wbcrossgt
       WHERE include = iv_name
       AND direct = abap_true.                             "#EC CI_SUBRC
-    LOOP AT lt_wbcrossgt ASSIGNING FIELD-SYMBOL(<ls_wbcrossgt>).
+    LOOP AT lt_wbcrossgt ASSIGNING <ls_wbcrossgt>.
       CLEAR lv_type.
       CASE <ls_wbcrossgt>-otype.
         WHEN 'DA'.
@@ -468,6 +498,33 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD resolve_prog_via_wbcrossi.
+
+    DATA: lv_type     TYPE tadir-object,
+          ls_used     LIKE LINE OF rt_used,
+          lt_wbcrossi TYPE STANDARD TABLE OF wbcrossi WITH DEFAULT KEY.
+
+    FIELD-SYMBOLS: <ls_wbcrossi> LIKE LINE OF lt_wbcrossi.
+
+
+    SELECT * FROM wbcrossi INTO TABLE lt_wbcrossi
+      WHERE include = iv_name.                            "#EC CI_SUBRC
+    LOOP AT lt_wbcrossi ASSIGNING <ls_wbcrossi>.
+      CASE <ls_wbcrossi>-otype.
+        WHEN 'IC'.
+          lv_type = 'PROG'.
+        WHEN OTHERS.
+* todo
+          CONTINUE.
+      ENDCASE.
+      ls_used-obj_type = lv_type.
+      ls_used-obj_name = <ls_wbcrossi>-name.
+      APPEND ls_used TO rt_used.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
   METHOD resolve_tabl.
 
     TYPES: BEGIN OF ty_dd03l,
@@ -538,7 +595,7 @@ CLASS ZCL_AOC_DEPENDENCIES IMPLEMENTATION.
 
 
     SELECT SINGLE rowtype FROM dd40l INTO lv_rowtype
-      WHERE typename = iv_name.                           "#EC CI_SUBRC
+      WHERE typename = iv_name.
     IF sy-subrc = 0 AND NOT lv_rowtype IS INITIAL.
       ls_used-obj_type = find_type( lv_rowtype ).
       ls_used-obj_name = lv_rowtype.

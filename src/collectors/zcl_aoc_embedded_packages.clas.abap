@@ -70,8 +70,9 @@ CLASS ZCL_AOC_EMBEDDED_PACKAGES IMPLEMENTATION.
         INTO TABLE lt_packages
         FOR ALL ENTRIES IN lt_packages
         WHERE parentcl = lt_packages-table_line.        "#EC CI_GENBUFF
-
-      APPEND LINES OF lt_packages TO rt_embedded.
+      IF sy-subrc = 0.
+        APPEND LINES OF lt_packages TO rt_embedded.
+      ENDIF.
     ENDWHILE.
 
   ENDMETHOD.
@@ -87,6 +88,8 @@ CLASS ZCL_AOC_EMBEDDED_PACKAGES IMPLEMENTATION.
 
     FIELD-SYMBOLS: <ls_object> LIKE LINE OF lt_objects.
 
+
+    CLEAR: p_objslist, p_srcid.
 
     lt_embedded = find_embedded( ).
     IF lines( lt_embedded ) = 0.
@@ -110,7 +113,7 @@ CLASS ZCL_AOC_EMBEDDED_PACKAGES IMPLEMENTATION.
       AND devclass IN p_confine_devclasses
       AND author IN p_confine_responsibles
       AND srcsystem IN lt_srcsystem
-      AND delflag = abap_false ##TOO_MANY_ITAB_FIELDS.  "#EC CI_GENBUFF
+      AND delflag = abap_false ##TOO_MANY_ITAB_FIELDS. "#EC CI_GENBUFF "#EC CI_SUBRC
 
     LOOP AT lt_objects ASSIGNING <ls_object>.
       MOVE-CORRESPONDING <ls_object> TO ls_object.
@@ -135,7 +138,7 @@ CLASS ZCL_AOC_EMBEDDED_PACKAGES IMPLEMENTATION.
     IMPORT
       mt_packages = mt_packages
       mv_local = mv_local
-      FROM DATA BUFFER p_attributes.
+      FROM DATA BUFFER p_attributes.                      "#EC CI_SUBRC
 
   ENDMETHOD.
 
@@ -162,7 +165,7 @@ CLASS ZCL_AOC_EMBEDDED_PACKAGES IMPLEMENTATION.
         p_name       = myname
         p_title      = 'Settings'
         p_attributes = lt_attributes
-        p_display    = p_display ).
+        p_display    = p_display ) ##NO_TEXT.
       IF lv_break = abap_true.
         RETURN.
       ENDIF.

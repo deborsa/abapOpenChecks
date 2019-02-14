@@ -51,7 +51,8 @@ CLASS lcl_app IMPLEMENTATION.
 
     init_result( ).
 
-    SELECT devclass FROM tdevc INTO TABLE lt_packages WHERE devclass IN s_devc.
+    SELECT devclass FROM tdevc INTO TABLE lt_packages
+      WHERE devclass IN s_devc.           "#EC CI_GENBUFF "#EC CI_SUBRC
 
     LOOP AT lt_packages INTO lv_package.
       run_package( lv_package ).
@@ -131,7 +132,7 @@ CLASS lcl_app IMPLEMENTATION.
 
     LOOP AT lt_source INTO ls_source.
       lv_index = ( strlen( ls_source-line ) DIV p_split ) + 1.
-      READ TABLE gt_result INDEX lv_index ASSIGNING <ls_result>.
+      READ TABLE gt_result INDEX lv_index ASSIGNING <ls_result>. "#EC CI_SUBRC
       <ls_result>-count = <ls_result>-count + 1.
     ENDLOOP.
 

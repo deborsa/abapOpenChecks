@@ -43,8 +43,7 @@ CLASS ZCL_AOC_CHECK_71 IMPLEMENTATION.
 
     lt_statements = build_statements(
       it_tokens     = it_tokens
-      it_statements = it_statements
-      it_levels     = it_levels ).
+      it_statements = it_statements ).
 
     LOOP AT lt_statements ASSIGNING <ls_statement>.
       lv_index = sy-tabix - 1.
@@ -52,7 +51,7 @@ CLASS ZCL_AOC_CHECK_71 IMPLEMENTATION.
       READ TABLE lt_statements INDEX lv_index INTO ls_prev. "#EC CI_SUBRC
 
       FIND REGEX 'MESSAGE.ID.SY-MSGID.TYPE.SY-MSGTY.NUMBER.SY-MSGNO.WITH.SY-MSGV.' IN <ls_statement>-str.
-      IF sy-subrc NE 0.
+      IF sy-subrc <> 0.
         CONTINUE.
       ENDIF.
 

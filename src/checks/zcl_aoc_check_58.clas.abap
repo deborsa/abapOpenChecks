@@ -19,21 +19,21 @@ CLASS zcl_aoc_check_58 DEFINITION
         REDEFINITION .
   PROTECTED SECTION.
 
-    CONSTANTS: c_private   TYPE seocompodf-exposure VALUE '0',
-               c_protected TYPE seocompodf-exposure VALUE '1',
-               c_public    TYPE seocompodf-exposure VALUE '2'.
-
     TYPES:
       BEGIN OF gty_reference_s,
         clsname  TYPE seocompodf-clsname,
         cmpname  TYPE seocompodf-cmpname,
         exposure TYPE seocompodf-cmpname,
+        alias    TYPE seocompodf-alias,
       END OF gty_reference_s .
     TYPES:
-      gty_reference_t TYPE STANDARD TABLE OF gty_reference_s WITH EMPTY KEY .
+      gty_reference_t TYPE STANDARD TABLE OF gty_reference_s WITH DEFAULT KEY .
     TYPES:
-      gty_include_t TYPE STANDARD TABLE OF wbcrossgt-include WITH EMPTY KEY .
+      gty_include_t TYPE STANDARD TABLE OF wbcrossgt-include WITH DEFAULT KEY .
 
+    CONSTANTS c_private TYPE seocompodf-exposure VALUE '0' ##NO_TEXT.
+    CONSTANTS c_protected TYPE seocompodf-exposure VALUE '1' ##NO_TEXT.
+    CONSTANTS c_public TYPE seocompodf-exposure VALUE '2' ##NO_TEXT.
     DATA mv_skip_ccau TYPE sap_bool .
     DATA mt_methods TYPE zaoc_seocmpname_range_tt .
 
@@ -41,7 +41,7 @@ CLASS zcl_aoc_check_58 DEFINITION
     METHODS report_clas
       IMPORTING
         !is_method   TYPE gty_reference_s
-        !lv_err_code TYPE sci_errc .
+        !iv_err_code TYPE sci_errc .
     METHODS is_bopf_interface
       RETURNING
         VALUE(rv_boolean) TYPE abap_bool .
@@ -54,7 +54,7 @@ CLASS zcl_aoc_check_58 DEFINITION
         !ct_include TYPE gty_include_t .
     METHODS filter_self_references
       IMPORTING
-        !iv_clsname TYPE gty_reference_s-clsname
+        !is_method  TYPE gty_reference_s
       CHANGING
         !ct_include TYPE gty_include_t .
   PRIVATE SECTION.
@@ -95,13 +95,13 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    SELECT clsname cmpname FROM seocompodf
-      INTO TABLE lt_constants
+    SELECT clsname cmpname exposure alias FROM seocompodf
+      INTO CORRESPONDING FIELDS OF TABLE lt_constants
       WHERE clsname = object_name
       AND version = '1'
       AND exposure = c_public
       AND attdecltyp = '2'
-      ORDER BY PRIMARY KEY.
+      ORDER BY PRIMARY KEY.                               "#EC CI_SUBRC
 
     LOOP AT lt_constants ASSIGNING <ls_constant>.
       CONCATENATE <ls_constant>-clsname '\DA:' <ls_constant>-cmpname INTO lv_name.
@@ -129,13 +129,23 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
 
     DATA: lt_methods     TYPE gty_reference_t,
           lv_name        TYPE wbcrossgt-name,
+          lv_category    TYPE seoclassdf-category,
           lt_ref_include TYPE gty_include_t.
 
     FIELD-SYMBOLS: <ls_method> LIKE LINE OF lt_methods.
 
 
-    SELECT clsname cmpname exposure FROM vseocompdf
-      INTO TABLE lt_methods
+    IF mv_skip_ccau = abap_true.
+      SELECT SINGLE category FROM seoclassdf INTO lv_category
+        WHERE version = '1' AND clsname = object_name.
+      IF sy-subrc = 0 AND lv_category = '05'.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    SELECT clsname cmpname exposure alias
+      FROM vseocompdf
+      INTO CORRESPONDING FIELDS OF TABLE lt_methods
       WHERE clsname = object_name
       AND cmptype = '1'
       AND version = '1'
@@ -151,16 +161,22 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
       SELECT include FROM wbcrossgt
         INTO TABLE lt_ref_include
         WHERE otype = 'ME'
-        AND name = lv_name.
+        AND name = lv_name.                               "#EC CI_SUBRC
 
       IF mv_skip_ccau = abap_true.
         DELETE lt_ref_include WHERE table_line+30 = 'CCAU'.
       ENDIF.
 
       IF lines( lt_ref_include ) = 0 AND object_type = 'CLAS'.
-        report_clas(
-          is_method   = <ls_method>
-          lv_err_code = '001' ).
+        IF <ls_method>-alias = abap_false.
+          report_clas(
+            is_method   = <ls_method>
+            iv_err_code = '001' ).
+        ELSE.
+          report_clas(
+            is_method   = <ls_method>
+            iv_err_code = '007' ).
+        ENDIF.
       ELSEIF lines( lt_ref_include ) = 0 AND object_type = 'INTF'.
         inform( p_param_1 = <ls_method>-cmpname
                 p_kind    = mv_errty
@@ -169,14 +185,14 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
       ELSEIF object_type = 'CLAS' AND <ls_method>-exposure = c_public.
         filter_self_references(
           EXPORTING
-            iv_clsname = <ls_method>-clsname
+            is_method  = <ls_method>
           CHANGING
             ct_include = lt_ref_include ).
 
         IF lines( lt_ref_include ) = 0.
           report_clas(
             is_method   = <ls_method>
-            lv_err_code = '003' ).
+            iv_err_code = '003' ).
         ENDIF.
       ELSEIF object_type = 'INTF'.
         filter_implementations(
@@ -207,8 +223,8 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
     FIELD-SYMBOLS: <ls_type> LIKE LINE OF lt_types.
 
 
-    SELECT clsname cmpname exposure FROM vseocompdf
-      INTO TABLE lt_types
+    SELECT clsname cmpname exposure alias FROM vseocompdf
+      INTO CORRESPONDING FIELDS OF TABLE lt_types
       WHERE clsname = object_name
       AND cmptype = '3'
       AND version = '1'
@@ -281,7 +297,9 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
 
   METHOD filter_self_references.
 
-    DATA: ls_mtdkey TYPE seocpdkey.
+    DATA: ls_mtdkey  TYPE seocpdkey,
+          lv_pattern TYPE string,
+          lt_method  TYPE TABLE OF abaptxt255.
 
     FIELD-SYMBOLS: <lv_include> LIKE LINE OF ct_include.
 
@@ -296,9 +314,24 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
           class_not_existing  = 1
           method_not_existing = 2
           OTHERS              = 3 ).
-      IF sy-subrc = 0 AND ls_mtdkey-clsname = iv_clsname.
+      IF sy-subrc = 0 AND ls_mtdkey-clsname = is_method-clsname.
+
+* check for parallel "CALLING method AT END OF TASK", which must be public
+        READ REPORT <lv_include> INTO lt_method.
+        IF sy-subrc = 0.
+* this is not completely correct, but will work in most cases?
+          lv_pattern = |CALLING { is_method-cmpname }|.
+          LOOP AT lt_method TRANSPORTING NO FIELDS WHERE line CS lv_pattern.
+            EXIT.
+          ENDLOOP.
+          IF sy-subrc = 0.
+            CONTINUE.
+          ENDIF.
+        ENDIF.
+
         DELETE ct_include.
       ENDIF.
+
     ENDLOOP.
 
   ENDMETHOD.
@@ -332,6 +365,8 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
         p_text = '&1 not referenced statically'.            "#EC NOTEXT
       WHEN '006'.
         p_text = 'Type &1 not referenced statically'.       "#EC NOTEXT
+      WHEN '007'.
+        p_text = 'Alias not referenced statically'.         "#EC NOTEXT
       WHEN OTHERS.
         super->get_message_text( EXPORTING p_test = p_test
                                            p_code = p_code
@@ -437,7 +472,7 @@ CLASS ZCL_AOC_CHECK_58 IMPLEMENTATION.
             p_sub_obj_name = lv_include
             p_kind         = mv_errty
             p_test         = myname
-            p_code         = lv_err_code ).
+            p_code         = iv_err_code ).
 
   ENDMETHOD.
 ENDCLASS.

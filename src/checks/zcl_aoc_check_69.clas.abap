@@ -19,6 +19,11 @@ CLASS zcl_aoc_check_69 DEFINITION
         REDEFINITION .
   PROTECTED SECTION.
 
+    METHODS is_parallel_method
+      IMPORTING
+        !it_tokens     TYPE stokesx_tab
+      RETURNING
+        VALUE(rv_bool) TYPE abap_bool .
     METHODS field_symbol
       IMPORTING
         !iv_name TYPE string .
@@ -104,6 +109,7 @@ CLASS zcl_aoc_check_69 DEFINITION
     DATA mo_stack TYPE REF TO lcl_stack .
     DATA mv_begin TYPE abap_bool .
     DATA mv_at TYPE string .
+    DATA mv_position TYPE i .
 ENDCLASS.
 
 
@@ -118,6 +124,7 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
 
 
     LOOP AT it_statements INTO statement_wa.
+      mv_position = sy-tabix.
       CHECK statement_wa-from <= statement_wa-to.
 
       lv_keyword = keyword( ).
@@ -299,6 +306,8 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
       lv_statement = get_statement( ).
       IF lv_statement CS 'FOR TESTING'.
         lv_regex = ms_naming-oo_ooltcl.
+      ELSEIF lo_super->full_name = '\TY:CX_ROOT'.
+        lv_regex = ms_naming-oo_oolxcl.
       ENDIF.
     ENDIF.
 
@@ -568,7 +577,7 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
         data( lv_name ).
       ENDIF.
 
-      FIND REGEX '^FIELD-SYMBOL\((\w+)\)$' IN ls_token-str SUBMATCHES lv_name.
+      FIND REGEX '^FIELD-SYMBOL\((<\w+>)\)$' IN ls_token-str SUBMATCHES lv_name ##NO_TEXT.
       IF sy-subrc = 0.
         field_symbol( lv_name ).
       ENDIF.
@@ -636,6 +645,10 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
       CASE ls_token-type.
         WHEN sana_tok_field_def.
           lv_name = remove_value( ls_token-str ).
+
+          IF ms_naming-set_pmeth = abap_true AND is_parallel_method( lt_tokens ) = abap_true.
+            CONTINUE.
+          ENDIF.
 
           data( iv_name  = lv_name
                 iv_scope = lv_scope ).
@@ -779,6 +792,7 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
               p_sub_obj_name = lv_include
               p_line         = get_line_rel( iv_relative )
               p_column       = get_column_rel( iv_relative )
+              p_position     = mv_position
               p_kind         = mv_errty
               p_test         = myname
               p_code         = '001'
@@ -845,6 +859,9 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
 
   METHOD constructor.
 
+    DATA: ls_message LIKE LINE OF scimessages.
+
+
     super->constructor( ).
 
     version     = '002'.
@@ -857,7 +874,13 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
 
     set_defaults( ).
 
-  ENDMETHOD.                    "CONSTRUCTOR
+    ls_message-test = myname.
+    ls_message-code = '001'.
+    ls_message-kind = c_error.
+    ls_message-pcom = '"#EC CI_NAMING'.
+    INSERT ls_message INTO TABLE scimessages.
+
+  ENDMETHOD.
 
 
   METHOD data.
@@ -1042,12 +1065,10 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
     CASE p_code.
       WHEN '001'.
         p_text = 'Bad naming, expected &1, got &2'.         "#EC NOTEXT
-      WHEN '002'.
+      WHEN '002' OR '004'.
         p_text = 'Unable to resolve &1'.                    "#EC NOTEXT
       WHEN '003'.
         p_text = 'Error qualifying tokens'.                 "#EC NOTEXT
-      WHEN '004'.
-        p_text = 'Unable to resolve &1'.                    "#EC NOTEXT
       WHEN '005'.
         p_text = 'Syntax error'.                            "#EC NOTEXT
       WHEN '006'.
@@ -1107,6 +1128,36 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
     ENDWHILE.
 
     rv_bool = boolc( lo_super->full_name = '\TY:CX_ROOT' ).
+
+  ENDMETHOD.
+
+
+  METHOD is_parallel_method.
+
+    DATA: ls_token LIKE LINE OF it_tokens.
+
+    IF lines( it_tokens ) <> 6.
+      RETURN.
+    ENDIF.
+
+    READ TABLE it_tokens INDEX 3 INTO ls_token.
+    IF sy-subrc <> 0 OR ls_token-str <> 'IMPORTING'.
+      RETURN.
+    ENDIF.
+    READ TABLE it_tokens INDEX 4 INTO ls_token.
+    IF sy-subrc <> 0 OR ls_token-str <> 'P_TASK'.
+      RETURN.
+    ENDIF.
+    READ TABLE it_tokens INDEX 5 INTO ls_token.
+    IF sy-subrc <> 0 OR ls_token-str <> 'TYPE'.
+      RETURN.
+    ENDIF.
+    READ TABLE it_tokens INDEX 6 INTO ls_token.
+    IF sy-subrc <> 0 OR ls_token-str <> 'CLIKE'.
+      RETURN.
+    ENDIF.
+
+    rv_bool = abap_true.
 
   ENDMETHOD.
 
@@ -1221,6 +1272,7 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
     ms_naming-oo_ooretu = 'R[:type:]_' ##NO_TEXT.
     ms_naming-oo_oolcla = 'LCL_'.
     ms_naming-oo_ooltcl = 'LTCL_'.
+    ms_naming-oo_oolxcl = 'LCX_'.
     ms_naming-oo_oolint = 'LIF_'.
 
     ms_naming-set_excpar = abap_true.
@@ -1230,6 +1282,8 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
     ms_naming-set_idocfm = abap_true.
     ms_naming-set_bwext  = abap_true.
     ms_naming-set_syntax = abap_true.
+    ms_naming-set_pmeth  = abap_true.
+    ms_naming-set_shlp   = abap_true.
 
   ENDMETHOD.
 
@@ -1248,7 +1302,6 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
 * idoc processing function module
     IF ms_naming-set_idocfm = abap_true
         AND rv_skip = abap_false.
-      CLEAR ls_check.
       _append import 'INPUT_METHOD'.
       _append import 'MASS_PROCESSING'.
       _append export 'WORKFLOW_RESULT'.
@@ -1317,6 +1370,21 @@ CLASS ZCL_AOC_CHECK_69 IMPLEMENTATION.
         rv_skip = skip_fm_parameters_check( is_parameters = is_parameters
                                             is_check      = ls_check ).
       ENDIF.
+    ENDIF.
+
+* search help exits
+    IF ms_naming-set_shlp = abap_true
+        AND rv_skip = abap_false.
+
+      CLEAR ls_check.
+      _append tables 'SHLP_TAB'.
+      _append tables 'RECORD_TAB'.
+      _append change 'SHLP'.
+      _append change 'CALLCONTROL'.
+
+      rv_skip = skip_fm_parameters_check( is_parameters = is_parameters
+                                          is_check      = ls_check ).
+
     ENDIF.
 
   ENDMETHOD.
